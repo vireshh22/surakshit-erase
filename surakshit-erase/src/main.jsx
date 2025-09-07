@@ -5,6 +5,7 @@ import FileExplorer from "./drive";
 
 ReactDOM.createRoot(document.getElementById("root")).render(
   <React.StrictMode>
+    <App />
     <FileExplorer />
   </React.StrictMode>,
 );
