@@ -42,15 +42,15 @@
 //     switch (appState) {
 //       case 'scanning':
 //         return <div>Scanning for drives...</div>;
-      
+
 //       case 'ready':
 //         return (
 //           <>
 //             {driveData && <DriveTree data={driveData} />}
 //             <div className="controls">
 //               <h3>Select Wipe Method</h3>
-//               <select 
-//                 value={selectedMethod} 
+//               <select
+//                 value={selectedMethod}
 //                 onChange={(e) => setSelectedMethod(e.target.value)}
 //               >
 //                 <option value="Clear">Clear</option>
@@ -85,94 +85,162 @@
 
 // export default App;
 
-
-
-
-
-
-import { useReducer, useEffect } from 'react';
-import { reducer, initialState } from './reducer';
-import DriveTree from './components/DriveTree';
-import WipeProgress from './components/WipeProgress';
-import Certificate from './components/Certificate';
-import './App.css';
+import { useReducer, useEffect } from "react";
+import { reducer, initialState } from "./reducer";
+import DriveTree from "./components/DriveTree";
+import WipeProgress from "./components/WipeProgress";
+import Certificate from "./components/Certificate";
+import "./App.css";
 
 // --- DUMMY DATA --- (remains the same)
 const dummyDriveData = {
-  blockdevices: [{ name: "sda", size: "50G", model: "VBOX HARDDISK", children: [{ name: "sda1", size: "45G", model: null }] }],
-  hpa: `/dev/sda:\n max sectors   = 41943040/500118192, HPA is enabled.`.trim(),
-  dco: `/dev/sda:\n DCO Revision: 0x0002\n The DCO configuration is not frozen.`.trim(),
+    blockdevices: [
+        {
+            name: "sda",
+            size: "50G",
+            model: "VBOX HARDDISK",
+            children: [{ name: "sda1", size: "45G", model: null }],
+        },
+    ],
+    hpa: `/dev/sda:\n max sectors   = 41943040/500118192, HPA is enabled.`.trim(),
+    dco: `/dev/sda:\n DCO Revision: 0x0002\n The DCO configuration is not frozen.`.trim(),
 };
 
 function App() {
-  const [state, dispatch] = useReducer(reducer, initialState);
-  const { status, driveData, error, selectedMethod } = state;
+    const [state, dispatch] = useReducer(reducer, initialState);
+    const { status, driveData, error, selectedMethod } = state;
 
-  // This effect simulates fetching data on component mount
-  useEffect(() => {
-    const fetchDrives = () => {
-      console.log("Simulating drive scan...");
-      setTimeout(() => {
-        try {
-          // On success, dispatch the success action with the data
-          dispatch({ type: 'FETCH_SUCCESS', payload: dummyDriveData });
-          console.log("Dummy data loaded.");
-        } catch (err) {
-          // On failure, dispatch the failure action with the error
-          dispatch({ type: 'FETCH_FAILURE', payload: err.message });
+    // This effect simulates fetching data on component mount
+    useEffect(() => {
+        const fetchDrives = () => {
+            console.log("Simulating drive scan...");
+            setTimeout(() => {
+                try {
+                    // On success, dispatch the success action with the data
+                    dispatch({
+                        type: "FETCH_SUCCESS",
+                        payload: dummyDriveData,
+                    });
+                    console.log("Dummy data loaded.");
+                } catch (err) {
+                    // On failure, dispatch the failure action with the error
+                    dispatch({ type: "FETCH_FAILURE", payload: err.message });
+                }
+            }, 1000); // 1-second delay
+        };
+
+        fetchDrives();
+    }, []); // Empty dependency array means this runs only once
+
+    const renderContent = () => {
+        switch (status) {
+            case "scanning":
+                return <div className="scanning-state">🔍 Scanning for drives...</div>;
+
+            case "error":
+                return <div className="error-box">Error: {error}</div>;
+
+            case "ready":
+                return (
+                    <div className="ready-state">
+                        {driveData && <DriveTree data={driveData} />}
+                        <div className="controls">
+                            <h3>Select Wipe Method</h3>
+
+                            <div className="method-selection">
+                                {["Clear", "Purge", "Destroy"].map((method) => (
+                                    <div key={method} className="method-option">
+                                        <div
+                                            className={`method-card ${
+                                                selectedMethod === method
+                                                    ? "selected"
+                                                    : ""
+                                            }`}
+                                            onClick={() =>
+                                                dispatch({
+                                                    type: "SELECT_METHOD",
+                                                    payload: method,
+                                                })
+                                            }
+                                        >
+                                            <div
+                                                className={`security-level ${
+                                                    method.toLowerCase() ===
+                                                    "clear"
+                                                        ? "low"
+                                                        : method.toLowerCase() ===
+                                                          "purge"
+                                                        ? "medium"
+                                                        : "high"
+                                                }`}
+                                            >
+                                                {method === "Clear"
+                                                    ? "Low Security"
+                                                    : method === "Purge"
+                                                    ? "Medium Security"
+                                                    : "High Security"}
+                                            </div>
+                                            <div className="method-header">
+                                                <div
+                                                    className={`method-icon ${method.toLowerCase()}`}
+                                                >
+                                                    {method === "Clear"
+                                                        ? "🧹"
+                                                        : method === "Purge"
+                                                        ? "🔥"
+                                                        : "💥"}
+                                                </div>
+                                                <div className="method-title">
+                                                    {method}
+                                                </div>
+                                            </div>
+                                            <div className="method-description">
+                                                {method === "Clear" &&
+                                                    "Basic overwrite with zeros. Fast but minimal security. Suitable for non-sensitive data."}
+                                                {method === "Purge" &&
+                                                    "Multiple-pass overwrite with random data. Balanced security and speed for sensitive information."}
+                                                {method === "Destroy" &&
+                                                    "Military-grade multi-pass overwrite. Maximum security for highly classified data. Takes longer."}
+                                            </div>
+                                        </div>
+                                    </div>
+                                ))}
+                            </div>
+
+                            <button
+                                className="start-button"
+                                onClick={() => dispatch({ type: "START_WIPE" })}
+                            >
+                                🚀 Start Security Wipe
+                            </button>
+                        </div>
+                    </div>
+                );
+
+            case "wiping":
+                return (
+                    <div className="wiping-state">
+                        <WipeProgress
+                            method={selectedMethod}
+                            onComplete={() => dispatch({ type: "WIPE_COMPLETE" })}
+                        />
+                    </div>
+                );
+
+            case "complete":
+                return <Certificate method={selectedMethod} fileCount={15} />;
+
+            default:
+                return <div>Invalid application state.</div>;
         }
-      }, 1000); // 1-second delay
     };
-    
-    fetchDrives();
-  }, []); // Empty dependency array means this runs only once
 
-  const renderContent = () => {
-    switch (status) {
-      case 'scanning':
-        return <div>🔍 Scanning for drives...</div>;
-      
-      case 'error':
-        return <div className="error-box">Error: {error}</div>;
-
-      case 'ready':
-        return (
-          <>
-            {driveData && <DriveTree data={driveData} />}
-            <div className="controls">
-              <h3>Select Wipe Method</h3>
-              <select
-                value={selectedMethod}
-                onChange={(e) => dispatch({ type: 'SELECT_METHOD', payload: e.target.value })}
-              >
-                <option value="Clear">Clear</option>
-                <option value="Purge">Purge</option>
-                <option value="Destroy">Destroy</option>
-              </select>
-              <button onClick={() => dispatch({ type: 'START_WIPE' })}>Start Wipe</button>
-            </div>
-          </>
-        );
-
-      case 'wiping':
-        return <WipeProgress method={selectedMethod} onComplete={() => dispatch({ type: 'WIPE_COMPLETE' })} />;
-
-      case 'complete':
-        return <Certificate method={selectedMethod} fileCount={15} />;
-
-      default:
-        return <div>Invalid application state.</div>;
-    }
-  };
-
-  return (
-    <div className="container">
-      <h1>Surakshit Erase Prototype</h1>
-      <div className="content">
-        {renderContent()}
-      </div>
-    </div>
-  );
+    return (
+        <div className="container">
+            <h1>Surakshit Erase Prototype</h1>
+            <div className="content">{renderContent()}</div>
+        </div>
+    );
 }
 
 export default App;
