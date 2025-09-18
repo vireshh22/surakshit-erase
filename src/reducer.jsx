@@ -1,7 +1,7 @@
 // src/reducer.js
 
 export const initialState = {
-  status: 'scanning', // 'scanning', 'ready', 'wiping', 'complete'
+  status: 'ready', // 'scanning', 'ready', 'wiping', 'complete'
   driveData: null,
   error: null,
   selectedMethod: 'Purge',

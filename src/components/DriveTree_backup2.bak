@@ -1,0 +1,321 @@
+import React, { useState, useEffect } from "react";
+import {
+    Folder,
+    FolderOpen,
+    File,
+    HardDrive,
+    Eye,
+    EyeOff,
+    RefreshCw,
+    Loader,
+    ArrowLeft,
+} from "lucide-react";
+import { invoke } from "@tauri-apps/api/core";
+import "../styles/DriveTree.css";
+
+const DriveTree = ({ onDriveSelect, onFileSelect }) => {
+    const [drives, setDrives] = useState([]);
+    const [selectedDrive, setSelectedDrive] = useState(null);
+    const [currentPath, setCurrentPath] = useState(null);
+    const [navigationState, setNavigationState] = useState(null);
+    const [loading, setLoading] = useState(false);
+    const [error, setError] = useState(null);
+    const [showHidden, setShowHidden] = useState(false);
+    const [mountedDrives, setMountedDrives] = useState(new Map());
+
+    useEffect(() => {
+        loadAvailableDrives();
+    }, []);
+
+    const loadAvailableDrives = async () => {
+        setLoading(true);
+        setError(null);
+        
+        try {
+            console.log('Loading available drives...');
+            const drivesData = await invoke('get_available_drives');
+            console.log('Received drives:', drivesData);
+            setDrives(drivesData);
+        } catch (error) {
+            console.error('Failed to load drives:', error);
+            setError(`Failed to load drives: ${error}`);
+        } finally {
+            setLoading(false);
+        }
+    };
+
+    const handleDriveClick = async (drive) => {
+        setLoading(true);
+        setError(null);
+        
+        try {
+            console.log(`Mounting drive: ${drive.device}`);
+            const mountPoint = await invoke('mount_drive_for_browsing', { device: drive.device });
+            console.log(`Drive mounted at: ${mountPoint}`);
+            
+            setMountedDrives(prev => new Map(prev.set(drive.device, mountPoint)));
+            
+            const navState = await invoke('browse_path', { path: mountPoint });
+            console.log('Navigation state:', navState);
+            
+            setSelectedDrive(drive);
+            setCurrentPath(mountPoint);
+            setNavigationState(navState);
+            
+            if (onDriveSelect) {
+                onDriveSelect(drive, mountPoint);
+            }
+        } catch (error) {
+            console.error('Failed to mount/browse drive:', error);
+            setError(`Failed to access drive: ${error}`);
+        } finally {
+            setLoading(false);
+        }
+    };
+
+    const handleFolderClick = async (item) => {
+        if (!item.is_directory) {
+            if (onFileSelect) {
+                onFileSelect(item);
+            }
+            return;
+        }
+
+        setLoading(true);
+        setError(null);
+        
+        try {
+            console.log(`Browsing folder: ${item.path}`);
+            const navState = await invoke('browse_path', { path: item.path });
+            console.log('Navigation state:', navState);
+            
+            setCurrentPath(item.path);
+            setNavigationState(navState);
+        } catch (error) {
+            console.error('Failed to browse folder:', error);
+            setError(`Failed to access folder: ${error}`);
+        } finally {
+            setLoading(false);
+        }
+    };
+
+    const handleBackClick = async () => {
+        if (!navigationState?.parent_path) {
+            setSelectedDrive(null);
+            setCurrentPath(null);
+            setNavigationState(null);
+            return;
+        }
+
+        setLoading(true);
+        setError(null);
+        
+        try {
+            console.log(`Going back to: ${navigationState.parent_path}`);
+            const navState = await invoke('browse_path', { path: navigationState.parent_path });
+            console.log('Navigation state:', navState);
+            
+            setCurrentPath(navigationState.parent_path);
+            setNavigationState(navState);
+        } catch (error) {
+            console.error('Failed to go back:', error);
+            setError(`Failed to navigate back: ${error}`);
+        } finally {
+            setLoading(false);
+        }
+    };
+
+    const getIcon = (item) => {
+        const iconProps = { size: 16, className: "icon" };
+
+        if (item.is_directory !== undefined) {
+            return item.is_directory ? (
+                <Folder {...iconProps} />
+            ) : (
+                <File {...iconProps} />
+            );
+        } else {
+            return <HardDrive {...iconProps} className="icon drive-icon" />;
+        }
+    };
+
+    const formatFileSize = (bytes) => {
+        if (!bytes) return '';
+        const units = ['B', 'KB', 'MB', 'GB', 'TB'];
+        let size = bytes;
+        let unitIndex = 0;
+        
+        while (size >= 1024 && unitIndex < units.length - 1) {
+            size /= 1024;
+            unitIndex++;
+        }
+        
+        return `${unitIndex === 0 ? size : size.toFixed(1)} ${units[unitIndex]}`;
+    };
+
+    const filteredItems = navigationState?.items?.filter(item => {
+        if (!showHidden && item.name.startsWith('.')) {
+            return false;
+        }
+        return true;
+    }) || [];
+
+    if (loading && !drives.length && !navigationState) {
+        return (
+            <div className="file-explorer">
+                <div className="loading-container">
+                    <Loader className="spinner" />
+                    <span>Loading drives...</span>
+                </div>
+            </div>
+        );
+    }
+
+    return (
+        <div className="file-explorer">
+            <div className="explorer-header">
+                <h2>
+                    {selectedDrive ? `Drive Browser - ${selectedDrive.device}` : 'Available Drives'}
+                </h2>
+                <div className="explorer-controls">
+                    {selectedDrive && (
+                        <button
+                            className="back-button"
+                            onClick={handleBackClick}
+                            title="Go back"
+                        >
+                            <ArrowLeft size={16} />
+                            Back
+                        </button>
+                    )}
+                    <button
+                        className="refresh-button"
+                        onClick={loadAvailableDrives}
+                        title="Refresh"
+                        disabled={loading}
+                    >
+                        <RefreshCw size={16} className={loading ? 'spinning' : ''} />
+                        Refresh
+                    </button>
+                    {selectedDrive && (
+                        <button
+                            className={`toggle-hidden ${showHidden ? "active" : ""}`}
+                            onClick={() => setShowHidden(!showHidden)}
+                            title={showHidden ? "Hide hidden files" : "Show hidden files"}
+                        >
+                            {showHidden ? <Eye size={16} /> : <EyeOff size={16} />}
+                            {showHidden ? "Hide Hidden" : "Show Hidden"}
+                        </button>
+                    )}
+                </div>
+            </div>
+
+            {error && (
+                <div className="error-container">
+                    <span className="error-message">{error}</span>
+                </div>
+            )}
+
+            {currentPath && (
+                <div className="current-path">
+                    <span>Current Path: {currentPath}</span>
+                </div>
+            )}
+
+            <div className="tree-container">
+                {!selectedDrive ? (
+                    <div className="drives-list">
+                        {drives.length === 0 ? (
+                            <div className="no-drives">
+                                <p>No drives found. Make sure you're running on Ubuntu and have proper permissions.</p>
+                            </div>
+                        ) : (
+                            drives.map((drive, index) => (
+                                <div key={drive.device} className="drive-item">
+                                    <div
+                                        className="tree-node drive-node"
+                                        onClick={() => handleDriveClick(drive)}
+                                    >
+                                        <span className="node-icon">
+                                            {getIcon(drive)}
+                                        </span>
+                                        <span className="node-name">
+                                            {drive.device}
+                                            {drive.size && ` (${drive.size})`}
+                                        </span>
+                                        {drive.filesystem && (
+                                            <span className="drive-info">
+                                                {drive.filesystem}
+                                            </span>
+                                        )}
+                                    </div>
+                                </div>
+                            ))
+                        )}
+                    </div>
+                ) : (
+                    <div className="files-list">
+                        {filteredItems.length === 0 ? (
+                            <div className="no-files">
+                                <p>No files or folders found in this directory.</p>
+                            </div>
+                        ) : (
+                            filteredItems.map((item, index) => (
+                                <div
+                                    key={item.path}
+                                    className={`tree-node file-item ${item.is_directory ? 'folder' : 'file'}`}
+                                    onClick={() => handleFolderClick(item)}
+                                >
+                                    <span className="node-icon">
+                                        {getIcon(item)}
+                                    </span>
+                                    <span className="node-name">
+                                        {item.name}
+                                    </span>
+                                    {item.size && (
+                                        <span className="file-size">
+                                            {formatFileSize(item.size)}
+                                        </span>
+                                    )}
+                                </div>
+                            ))
+                        )}
+                    </div>
+                )}
+            </div>
+
+            {loading && (selectedDrive || drives.length > 0) && (
+                <div className="loading-overlay">
+                    <Loader className="spinner" />
+                </div>
+            )}
+
+            <div className="explorer-footer">
+                <div className="legend">
+                    <div className="legend-item">
+                        <HardDrive size={14} className="drive-icon" />
+                        <span>Drive</span>
+                    </div>
+                    <div className="legend-item">
+                        <Folder size={14} />
+                        <span>Folder</span>
+                    </div>
+                    <div className="legend-item">
+                        <File size={14} />
+                        <span>File</span>
+                    </div>
+                </div>
+                <div className="status-info">
+                    <small>
+                        {selectedDrive 
+                            ? `Browsing ${selectedDrive.device}` 
+                            : `${drives.length} drives available`
+                        }
+                    </small>
+                </div>
+            </div>
+        </div>
+    );
+};
+
+export default DriveTree;
