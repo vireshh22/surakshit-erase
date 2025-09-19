@@ -463,6 +463,7 @@ import {
     ArrowRight,
 } from "lucide-react";
 import { invoke } from "@tauri-apps/api/core";
+import { getMockData} from "../helper/getMockData";
 import "../styles/DriveTree.css";
 
 const DriveTree = ({ selectedDrive, driveFileSystem, onProceedToMethodSelection, dispatch }) => {
@@ -481,6 +482,10 @@ const DriveTree = ({ selectedDrive, driveFileSystem, onProceedToMethodSelection,
         }
     }, [selectedDrive]);
 
+    // useEffect(() => {
+    //     loadDriveFileSystem();
+    // }, []);
+
     const loadDriveFileSystem = async () => {
         if (!selectedDrive) return;
         
@@ -488,10 +493,11 @@ const DriveTree = ({ selectedDrive, driveFileSystem, onProceedToMethodSelection,
         setError(null);
         
         try {
-            console.log('Loading file system for drive:', selectedDrive.path);
+            console.log('Loading file system for drive:', selectedDrive?.path);
             const data = await invoke('get_drive_file_system', { 
                 drivePath: selectedDrive.path 
             });
+            // const data = getMockData(); // Replace with actual Tauri call
             console.log('Received drive file system data:', data);
             
             dispatch({
