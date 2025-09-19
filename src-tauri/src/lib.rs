@@ -190,7 +190,7 @@ async fn get_drive_contents(drive_path: &str) -> Result<Vec<FileSystemNode>, Str
 
                 // If partition is mounted, scan its contents
                 if let Some(mount_point) = &partition_info.mountpoint {
-                    match get_directory_contents(mount_point, 0).await {
+                    match get_directory_contents(mount_point, 0, true).await {
                         Ok(contents) => {
                             partition_node.children = Some(contents);
                         }
@@ -204,6 +204,9 @@ async fn get_drive_contents(drive_path: &str) -> Result<Vec<FileSystemNode>, Str
                     let mut children = partition_node.children.unwrap_or_default();
                     children.extend(create_hidden_regions());
                     partition_node.children = Some(children);
+                } else {
+                    // For unmounted partitions, try to create a temporary mount or show placeholder
+                    partition_node.children = Some(create_unmounted_partition_structure(&partition_info.name));
                 }
 
                 if let Some(ref mut drive_children) = drive_node.children {
@@ -279,12 +282,21 @@ fn create_partition_node(name: &str, info: &DriveLineInfo) -> Result<FileSystemN
     })
 }
 
-#[async_recursion]
-async fn get_directory_contents(path: &str, depth: usize) -> Result<Vec<FileSystemNode>, String> {
-    if depth > 3 {
-        return Ok(Vec::new());
-    }
+fn is_cache_or_temp_directory(name: &str) -> bool {
+    let cache_dirs = [
+        "cache", "tmp", "temp", ".cache", ".tmp", "node_modules", 
+        "__pycache__", ".git", ".svn", ".hg", "Cache", "Temp",
+        "cache2", "CachedData", "logs", ".logs", "log"
+    ];
+    
+    cache_dirs.iter().any(|&cache_dir| 
+        name.to_lowercase().contains(&cache_dir.to_lowercase())
+    )
+}
 
+#[async_recursion]
+async fn get_directory_contents(path: &str, depth: usize, is_root: bool) -> Result<Vec<FileSystemNode>, String> {
+    // Remove the depth limit completely - fetch everything
     let mut nodes = Vec::new();
 
     match fs::read_dir(path) {
@@ -297,14 +309,14 @@ async fn get_directory_contents(path: &str, depth: usize) -> Result<Vec<FileSyst
                     let entry_path = entry.path();
                     let name = entry.file_name().to_string_lossy().to_string();
 
-                    // Skip special directories that might cause issues
-                    if matches!(name.as_str(), "proc" | "sys" | "dev" | "run" | "tmp") && path == "/" {
+                    // Skip special directories that might cause issues only at root level
+                    if is_root && matches!(name.as_str(), "proc" | "sys" | "dev" | "run") && path == "/" {
                         continue;
                     }
 
                     let metadata = match entry.metadata() {
                         Ok(metadata) => metadata,
-                        Err(_) => continue,
+                        Err(_) => continue, // Skip files we can't access
                     };
 
                     let is_dir = metadata.is_dir();
@@ -326,22 +338,52 @@ async fn get_directory_contents(path: &str, depth: usize) -> Result<Vec<FileSyst
                         children: None,
                     };
 
-                    // Recursively get children for directories (limited depth)
-                    if is_dir && depth < 2 {
-                        match get_directory_contents(&entry_path.to_string_lossy(), depth + 1).await {
-                            Ok(children) => {
+                    // For directories, always try to get children (no depth limit)
+                    if is_dir {
+                        // For cache/temp directories, limit the number of entries but still scan
+                        let limit_entries = is_cache_or_temp_directory(&name);
+                        
+                        match get_directory_contents(&entry_path.to_string_lossy(), depth + 1, false).await {
+                            Ok(mut children) => {
                                 if !children.is_empty() {
+                                    // If it's a cache/temp directory, limit to first 10 entries
+                                    if limit_entries && children.len() > 10 {
+                                        children.truncate(10);
+                                        // Add a placeholder to indicate there are more files
+                                        children.push(FileSystemNode {
+                                            name: format!("... and {} more items", children.len().saturating_sub(10)),
+                                            node_type: "placeholder".to_string(),
+                                            icon: "info".to_string(),
+                                            size: None,
+                                            hidden: None,
+                                            visible: Some(true),
+                                            children: None,
+                                        });
+                                    }
                                     node.children = Some(children);
                                 }
                             }
-                            Err(_) => {} // Continue even if we can't read subdirectories
+                            Err(_) => {
+                                // If we can't read the directory, add a placeholder
+                                node.children = Some(vec![FileSystemNode {
+                                    name: "Access denied or permission required".to_string(),
+                                    node_type: "error".to_string(),
+                                    icon: "warning".to_string(),
+                                    size: None,
+                                    hidden: None,
+                                    visible: Some(true),
+                                    children: None,
+                                }]);
+                            }
                         }
                     }
 
                     nodes.push(node);
 
-                    // Limit entries to prevent UI overload
-                    if nodes.len() >= 20 {
+                    // Only limit total entries for the root level or cache directories
+                    if (is_root && nodes.len() >= 50) || 
+                       (is_cache_or_temp_directory(&std::path::Path::new(path).file_name()
+                           .unwrap_or_default().to_string_lossy()) && nodes.len() >= 20) {
                         break;
                     }
                 }
@@ -361,6 +403,37 @@ async fn get_directory_contents(path: &str, depth: usize) -> Result<Vec<FileSyst
     });
 
     Ok(nodes)
+}
+
+fn create_unmounted_partition_structure(partition_name: &str) -> Vec<FileSystemNode> {
+    vec![FileSystemNode {
+        name: format!("Partition {} (Not Mounted)", partition_name),
+        node_type: "info".to_string(),
+        icon: "warning".to_string(),
+        size: None,
+        hidden: None,
+        visible: Some(true),
+        children: Some(vec![
+            FileSystemNode {
+                name: "This partition is not currently mounted".to_string(),
+                node_type: "info".to_string(),
+                icon: "info".to_string(),
+                size: None,
+                hidden: None,
+                visible: Some(true),
+                children: None,
+            },
+            FileSystemNode {
+                name: "Mount it to explore its contents".to_string(),
+                node_type: "info".to_string(),
+                icon: "info".to_string(),
+                size: None,
+                hidden: None,
+                visible: Some(true),
+                children: None,
+            }
+        ]),
+    }]
 }
 
 fn create_placeholder_structure(mount_point: &str) -> Vec<FileSystemNode> {

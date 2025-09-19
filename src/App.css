@@ -21,6 +21,9 @@ body {
     margin: 0 auto;
     padding: 20px;
     text-align: center;
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
 }
 
 .container h1 {
@@ -32,16 +35,21 @@ body {
     -webkit-text-fill-color: transparent;
     background-clip: text;
     text-shadow: 0 2px 8px rgba(100, 108, 255, 0.3);
+    flex-shrink: 0;
 }
 
 .content {
     width: 100%;
-    height: auto;
+    height: 80vh;
+    min-height: 600px;
     max-height: 80vh;
     padding: 0;
     border: none;
     border-radius: 0;
-    overflow: visible;
+    overflow: hidden;
+    flex: 1;
+    display: flex;
+    flex-direction: column;
 }
 
 /* Drive Tree Styles */
@@ -53,10 +61,20 @@ body {
 .ready-state {
     display: flex;
     flex-direction: column;
-    gap: 24px;
-    height: 75vh;
+    gap: 20px;
+    height: 100%;
     max-width: 1200px;
     margin: 0 auto;
+    overflow: hidden;
+}
+
+.drive-selection-header {
+    background: linear-gradient(135deg, #2d2d30 0%, #3a3a3d 100%);
+    border-radius: 12px;
+    padding: 20px;
+    border: 1px solid #444;
+    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.3);
+    flex-shrink: 0;
 }
 
 .drive-selection-header {
@@ -139,25 +157,30 @@ body {
     box-shadow: none;
     display: flex;
     flex-direction: column;
-    gap: 24px;
+    gap: 16px;
     align-items: stretch;
+    min-height: 0;
+    overflow: hidden;
 }
 
 .controls h3 {
-    margin: 0 0 20px 0;
-    font-size: 1.5rem;
+    margin: 0 0 16px 0;
+    font-size: 1.4rem;
     font-weight: 600;
     text-align: center;
     color: rgba(255, 255, 255, 0.9);
     text-shadow: 0 1px 2px rgba(0, 0, 0, 0.5);
+    flex-shrink: 0;
 }
 
 /* Three Column Method Selection */
 .method-selection {
     display: grid;
     grid-template-columns: repeat(3, 1fr);
-    gap: 20px;
-    margin-bottom: 24px;
+    gap: 16px;
+    margin-bottom: 16px;
+    /* flex: 1; */
+    min-height: 0;
 }
 
 .method-option {
@@ -167,18 +190,19 @@ body {
 }
 
 .method-card {
-    padding: 24px 20px;
+    padding: 16px;
     border: 2px solid rgba(255, 255, 255, 0.1);
     border-radius: 12px;
     background: linear-gradient(135deg, rgba(255, 255, 255, 0.05) 0%, rgba(255, 255, 255, 0.02) 100%);
     transition: all 0.3s ease;
     position: relative;
     cursor: pointer;
-    height: 100%;
+    height: 70%;
     display: flex;
     flex-direction: column;
     justify-content: space-between;
     backdrop-filter: blur(10px);
+    min-height: 200px;
 }
 
 .method-card:hover {
@@ -205,14 +229,14 @@ body {
 }
 
 .method-icon {
-    width: 48px;
-    height: 48px;
+    width: 40px;
+    height: 40px;
     border-radius: 50%;
     display: flex;
     align-items: center;
     justify-content: center;
-    font-size: 1.5rem;
-    margin-bottom: 8px;
+    font-size: 1.2rem;
+    margin-bottom: 6px;
 }
 
 .method-icon.clear {
@@ -281,20 +305,21 @@ body {
 /* Enhanced Start Button */
 .start-button {
     width: 100%;
-    max-width: 400px;
-    margin: 24px auto;
-    padding: 16px 32px;
+    max-width: 350px;
+    margin: 0 auto;
+    padding: 12px 24px;
     border: none;
     border-radius: 12px;
     background: linear-gradient(135deg, #646cff 0%, #7c3aed 100%);
     color: white;
-    font-size: 1.1rem;
+    font-size: 1rem;
     font-weight: 700;
     cursor: pointer;
     transition: all 0.3s ease;
     position: relative;
     overflow: hidden;
     box-shadow: 0 4px 16px rgba(100, 108, 255, 0.4);
+    flex-shrink: 0;
 }
 
 .start-button:hover {
@@ -438,4 +463,90 @@ button:hover,
     height: 75vh;
     font-size: 1.2rem;
     font-weight: 500;
+}
+
+/* Fixed Layout Wrapper to prevent resizing */
+.app-layout-wrapper {
+    width: 100vw;
+    height: 100vh;
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+    background: linear-gradient(135deg, #1a1a1a 0%, #2d2d30 100%);
+}
+
+.main-content-area {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    padding: 20px;
+    max-width: 1200px;
+    margin: 0 auto;
+    width: 100%;
+    box-sizing: border-box;
+}
+
+.main-content-area h1 {
+    font-size: 2rem;
+    font-weight: 700;
+    margin-bottom: 24px;
+    background: linear-gradient(135deg, #646cff 0%, #7c3aed 100%);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+    text-shadow: 0 2px 8px rgba(100, 108, 255, 0.3);
+    flex-shrink: 0;
+}
+
+.content-wrapper {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    min-height: 0;
+    max-width: 1200px;
+    margin: 0 auto;
+    width: 100%;
+}
+
+/* Ensure all major content containers fill available space */
+.drive-tree-container,
+.drive-selector-container {
+    height: 100%;
+    display: flex;
+    flex-direction: column;
+}
+
+/* Loading and error states maintain consistent dimensions */
+.loading-container,
+.error-container,
+.no-data {
+    height: 100%;
+    min-height: 500px;
+}
+
+/* Prevent content jumping during state transitions */
+.content {
+    transition: none !important;
+    animation: none !important;
+    height: 100%;
+    overflow: hidden;
+}
+
+.file-explorer,
+.ready-state {
+    transition: none !important;
+    animation: none !important;
+}
+
+/* Responsive adjustments */
+@media (max-width: 768px) {
+    .app-layout-wrapper {
+        height: 100vh;
+    }
+    
+    .main-content-area {
+        padding: 16px;
+    }
 }

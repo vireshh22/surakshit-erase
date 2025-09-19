@@ -1,7 +1,7 @@
 // reducer.js - Updated with navigation states
 
 export const initialState = {
-    status: "drive_contents", // 'drive_selection', 'drive_contents', 'ready', 'wiping', 'complete'
+    status: "drive_selection", // 'drive_selection', 'drive_contents', 'ready', 'wiping', 'complete'
     driveData: null,
     selectedDrive: null,
     driveFileSystem: null,
