@@ -1,3 +1,4 @@
+
 // src-tauri/src/main.rs
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
@@ -205,8 +206,29 @@ async fn get_drive_contents(drive_path: &str) -> Result<Vec<FileSystemNode>, Str
                     children.extend(create_hidden_regions());
                     partition_node.children = Some(children);
                 } else {
-                    // For unmounted partitions, try to create a temporary mount or show placeholder
-                    partition_node.children = Some(create_unmounted_partition_structure(&partition_info.name));
+                    // For unmounted partitions, try to mount them temporarily
+                    match try_mount_partition(&partition_info.name, &partition_info.fstype).await {
+                        Ok(mount_point) => {
+                            // Successfully mounted, now scan contents
+                            match get_directory_contents(&mount_point, 0, true).await {
+                                Ok(contents) => {
+                                    partition_node.children = Some(contents);
+                                }
+                                Err(_) => {
+                                    partition_node.children = Some(create_placeholder_structure(&mount_point));
+                                }
+                            }
+                            
+                            // Add demo hidden regions for demonstration
+                            let mut children = partition_node.children.unwrap_or_default();
+                            children.extend(create_hidden_regions());
+                            partition_node.children = Some(children);
+                        }
+                        Err(_) => {
+                            // If mounting fails, show unmounted structure
+                            partition_node.children = Some(create_unmounted_partition_structure(&partition_info.name));
+                        }
+                    }
                 }
 
                 if let Some(ref mut drive_children) = drive_node.children {
@@ -405,17 +427,183 @@ async fn get_directory_contents(path: &str, depth: usize, is_root: bool) -> Resu
     Ok(nodes)
 }
 
+async fn try_mount_partition(partition_name: &str, fstype: &Option<String>) -> Result<String, String> {
+    let device_path = format!("/dev/{}", partition_name);
+    
+    // First, check if the partition is already mounted somewhere
+    let output = Command::new("findmnt")
+        .arg("-n")  // No headers
+        .arg("-o")  // Output format
+        .arg("TARGET")
+        .arg(&device_path)
+        .output();
+    
+    if let Ok(output) = output {
+        if output.status.success() {
+            let mount_point = String::from_utf8_lossy(&output.stdout).trim().to_string();
+            if !mount_point.is_empty() {
+                println!("Partition {} already mounted at: {}", partition_name, mount_point);
+                return Ok(mount_point);
+            }
+        }
+    }
+
+    // If not mounted, try to mount it temporarily
+    let mount_point = format!("/tmp/surakshit_mount_{}", partition_name);
+
+    // Create mount directory if it doesn't exist
+    if let Err(e) = std::fs::create_dir_all(&mount_point) {
+        return Err(format!("Failed to create mount directory: {}", e));
+    }
+
+    println!("Attempting to mount {} to {}", device_path, mount_point);
+
+    // Try different mounting strategies
+    let mount_result = try_mount_with_different_options(&device_path, &mount_point, fstype).await;
+    
+    match mount_result {
+        Ok(_) => {
+            println!("Successfully mounted {} at {}", device_path, mount_point);
+            Ok(mount_point)
+        },
+        Err(e) => {
+            println!("Failed to mount {}: {}", device_path, e);
+            // Clean up the directory if mounting failed
+            let _ = std::fs::remove_dir(&mount_point);
+            Err(e)
+        }
+    }
+}
+
+async fn try_mount_with_different_options(device_path: &str, mount_point: &str, fstype: &Option<String>) -> Result<(), String> {
+    println!("Trying to mount {} with filesystem type: {:?}", device_path, fstype);
+    
+    // Strategy 1: Try with filesystem type if provided
+    if let Some(fs) = fstype {
+        if !fs.is_empty() && fs != "-" {
+            println!("Strategy 1: Mounting with detected filesystem: {}", fs);
+            let output = Command::new("sudo")
+                .arg("mount")
+                .arg("-t")
+                .arg(fs)
+                .arg("-o")
+                .arg("ro,noatime") // Read-only and no access time updates for safety
+                .arg(device_path)
+                .arg(mount_point)
+                .output()
+                .map_err(|e| format!("Command execution failed: {}", e))?;
+            
+            if output.status.success() {
+                println!("Successfully mounted with filesystem type: {}", fs);
+                return Ok(());
+            } else {
+                let stderr = String::from_utf8_lossy(&output.stderr);
+                println!("Failed with detected filesystem {}: {}", fs, stderr);
+            }
+        }
+    }
+
+    // Strategy 2: Try auto-detection with read-only
+    println!("Strategy 2: Auto-detection mounting");
+    let output = Command::new("sudo")
+        .arg("mount")
+        .arg("-o")
+        .arg("ro,noatime")
+        .arg(device_path)
+        .arg(mount_point)
+        .output()
+        .map_err(|e| format!("Command execution failed: {}", e))?;
+    
+    if output.status.success() {
+        println!("Successfully mounted with auto-detection");
+        return Ok(());
+    } else {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        println!("Auto-detection failed: {}", stderr);
+    }
+
+    // Strategy 3: Try common filesystems
+    let common_filesystems = ["ext4", "ext3", "ext2", "ntfs", "vfat", "exfat", "xfs", "btrfs"];
+    
+    for fs in &common_filesystems {
+        println!("Strategy 3: Trying filesystem: {}", fs);
+        let output = Command::new("sudo")
+            .arg("mount")
+            .arg("-t")
+            .arg(fs)
+            .arg("-o")
+            .arg("ro,noatime")
+            .arg(device_path)
+            .arg(mount_point)
+            .output()
+            .map_err(|e| format!("Command execution failed: {}", e))?;
+        
+        if output.status.success() {
+            println!("Successfully mounted with filesystem: {}", fs);
+            return Ok(());
+        } else {
+            let stderr = String::from_utf8_lossy(&output.stderr);
+            println!("Failed with filesystem {}: {}", fs, stderr);
+        }
+    }
+
+    Err("Failed to mount partition with any supported filesystem".to_string())
+}
+
+async fn cleanup_mount_point(mount_point: &str) -> Result<(), String> {
+    // Unmount the partition
+    let output = Command::new("sudo")
+        .arg("umount")
+        .arg(mount_point)
+        .output()
+        .map_err(|e| format!("Failed to execute umount command: {}", e))?;
+
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        eprintln!("Warning: Failed to unmount {}: {}", mount_point, stderr);
+    }
+
+    // Remove the temporary mount directory
+    if let Err(e) = std::fs::remove_dir(mount_point) {
+        eprintln!("Warning: Failed to remove mount directory {}: {}", mount_point, e);
+    }
+
+    Ok(())
+}
+
+// Add a cleanup command for unmounting temporary mounts
+#[tauri::command]
+async fn cleanup_temporary_mounts() -> Result<(), String> {
+    // Find all temporary mount points created by this application
+    let tmp_dir = "/tmp";
+    if let Ok(entries) = std::fs::read_dir(tmp_dir) {
+        for entry in entries {
+            if let Ok(entry) = entry {
+                let name = entry.file_name();
+                let name_str = name.to_string_lossy();
+                if name_str.starts_with("surakshit_mount_") {
+                    let mount_path = entry.path();
+                    if let Some(mount_str) = mount_path.to_str() {
+                        let _ = cleanup_mount_point(mount_str).await;
+                    }
+                }
+            }
+        }
+    }
+    Ok(())
+}
+
 fn create_unmounted_partition_structure(partition_name: &str) -> Vec<FileSystemNode> {
     vec![FileSystemNode {
-        name: format!("Partition {} (Not Mounted)", partition_name),
-        node_type: "info".to_string(),
+        name: format!("⚠️ Partition {} - Mount Failed", partition_name),
+        node_type: "error".to_string(),
         icon: "warning".to_string(),
         size: None,
         hidden: None,
         visible: Some(true),
         children: Some(vec![
             FileSystemNode {
-                name: "This partition is not currently mounted".to_string(),
+                name: "Unable to automatically mount this partition".to_string(),
                 node_type: "info".to_string(),
                 icon: "info".to_string(),
                 size: None,
@@ -424,7 +612,44 @@ fn create_unmounted_partition_structure(partition_name: &str) -> Vec<FileSystemN
                 children: None,
             },
             FileSystemNode {
-                name: "Mount it to explore its contents".to_string(),
+                name: "Possible reasons:".to_string(),
+                node_type: "info".to_string(),
+                icon: "info".to_string(),
+                size: None,
+                hidden: None,
+                visible: Some(true),
+                children: Some(vec![
+                    FileSystemNode {
+                        name: "• Unsupported filesystem".to_string(),
+                        node_type: "info".to_string(),
+                        icon: "info".to_string(),
+                        size: None,
+                        hidden: None,
+                        visible: Some(true),
+                        children: None,
+                    },
+                    FileSystemNode {
+                        name: "• Corrupted partition".to_string(),
+                        node_type: "info".to_string(),
+                        icon: "info".to_string(),
+                        size: None,
+                        hidden: None,
+                        visible: Some(true),
+                        children: None,
+                    },
+                    FileSystemNode {
+                        name: "• Permission issues".to_string(),
+                        node_type: "info".to_string(),
+                        icon: "info".to_string(),
+                        size: None,
+                        hidden: None,
+                        visible: Some(true),
+                        children: None,
+                    },
+                ]),
+            },
+            FileSystemNode {
+                name: format!("Try mounting manually: sudo mount /dev/{} /mnt/{}", partition_name, partition_name),
                 node_type: "info".to_string(),
                 icon: "info".to_string(),
                 size: None,
@@ -673,7 +898,9 @@ pub fn run() {
     tauri::Builder::default()
         .invoke_handler(tauri::generate_handler![
             get_available_drives,
-            get_drive_file_system
+            get_drive_file_system,
+            cleanup_temporary_mounts,
+            // test_mount_commands
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
