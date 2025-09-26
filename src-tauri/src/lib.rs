@@ -1285,25 +1285,25 @@ fn create_placeholder_structure(mount_point: &str) -> Vec<FileSystemNode> {
         hidden: None,
         visible: Some(true),
         children: Some(vec![
-            FileSystemNode {
-                name: "Documents".to_string(),
-                node_type: "folder".to_string(),
-                icon: "folder".to_string(),
-                size: None,
-                hidden: None,
-                visible: None,
-                children: Some(vec![
-                    FileSystemNode {
-                        name: "sample.txt".to_string(),
-                        node_type: "file".to_string(),
-                        icon: "file".to_string(),
-                        size: Some("100MB".to_string()),
-                        hidden: None,
-                        visible: None,
-                        children: None,
-                    },
-                ]),
-            },
+            // FileSystemNode {
+            //     name: "Documents".to_string(),
+            //     node_type: "folder".to_string(),
+            //     icon: "folder".to_string(),
+            //     size: None,
+            //     hidden: None,
+            //     visible: None,
+            //     children: Some(vec![
+            //         FileSystemNode {
+            //             name: "sample.txt".to_string(),
+            //             node_type: "file".to_string(),
+            //             icon: "file".to_string(),
+            //             size: Some("100MB".to_string()),
+            //             hidden: None,
+            //             visible: None,
+            //             children: None,
+            //         },
+            //     ]),
+            // },
         ]),
     }]
 }
@@ -1954,7 +1954,7 @@ async fn get_drive_contents(drive_path: &str) -> Result<Vec<FileSystemNode>, Str
                     }
                     
                     let mut children = partition_node.children.unwrap_or_default();
-                    children.extend(create_hidden_regions());
+                    // children.extend(create_hidden_regions());
                     partition_node.children = Some(children);
                 } else {
                     match try_mount_partition(&partition_info.name, &partition_info.fstype).await {
@@ -1969,7 +1969,7 @@ async fn get_drive_contents(drive_path: &str) -> Result<Vec<FileSystemNode>, Str
                             }
                             
                             let mut children = partition_node.children.unwrap_or_default();
-                            children.extend(create_hidden_regions());
+                            // children.extend(create_hidden_regions());
                             partition_node.children = Some(children);
                         }
                         Err(_) => {
